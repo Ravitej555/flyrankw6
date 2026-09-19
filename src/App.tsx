@@ -4,8 +4,11 @@ import { DeployButton } from './components/DeployButton';
 import { ActionSparkleButton } from './components/ActionSparkleButton';
 import { TestingHarness } from './components/TestingHarness';
 import { MotionPhilosophyCard } from './components/MotionPhilosophyCard';
+import { ChatMessageRenderer } from './components/ChatMessageRenderer';
+import { ValidatedPromptForm } from './components/ValidatedPromptForm';
 import { ButtonState, SimulationConfig, TelemetryLog } from './types';
-import { Sparkles, Terminal, Github, Bot, CornerDownLeft } from 'lucide-react';
+import { ChatMessage, MockAiService } from './services/mockAiService';
+import { Sparkles, Terminal, Github, Bot } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [simulationConfig, setSimulationConfig] = useState<SimulationConfig>({
@@ -16,11 +19,22 @@ export const App: React.FC = () => {
   });
 
   const [telemetryLogs, setTelemetryLogs] = useState<TelemetryLog[]>([]);
-  const [chatPrompt, setChatPrompt] = useState<string>('Synthesize state machine transitions with sub-frame motion tokens.');
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
+      id: 'welcome-1',
       role: 'assistant',
-      text: 'Welcome to Buttons with a Brain (FE-AA1). Test the choreographed button states below: hover, active press, loading morph, success pop, and kinetic error shake.',
+      status: 'complete',
+      content: 'Welcome to Buttons with a Brain & AI Test Harness (FE-AA1 / FE-09). Dispatch prompts below to test our state machine and component verification suite.',
+      toolResult: {
+        toolName: 'scoreLead',
+        status: 'success',
+        data: {
+          leadScore: 96,
+          urgencyTier: 'High',
+          conversionProbability: '94.8%',
+          keySignals: ['Production Ready', 'Full CI Pipeline', 'Accessible UI'],
+        },
+      },
     },
   ]);
 
@@ -45,27 +59,97 @@ export const App: React.FC = () => {
     setTelemetryLogs((prev) => [newLog, ...prev.slice(0, 49)]);
   }, []);
 
-  const handleChatDispatch = async (): Promise<boolean> => {
-    if (!chatPrompt.trim()) return false;
+  const handlePromptSubmit = async (prompt: string): Promise<boolean> => {
+    const userMsgId = Math.random().toString(36).substring(7);
+    const assistantMsgId = Math.random().toString(36).substring(7);
 
-    const userText = chatPrompt;
-    setChatMessages((prev) => [...prev, { role: 'user', text: userText }]);
+    // Append user message
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        id: userMsgId,
+        role: 'user',
+        status: 'complete',
+        content: prompt,
+      },
+      {
+        id: assistantMsgId,
+        role: 'assistant',
+        status: 'pending',
+        content: '',
+      },
+    ]);
 
-    // Simulated dispatch latency
-    await new Promise((res) => setTimeout(res, simulationConfig.latencyMs));
+    const shouldFail = Math.random() < simulationConfig.failureRate;
 
-    const isSuccess = Math.random() >= simulationConfig.failureRate;
-    if (isSuccess) {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          text: `Synthesized response for: "${userText}". All transition curves rendered at 60fps with zero layout shift.`,
+    try {
+      // Stream response using mock AI engine
+      const assistantMessage = await MockAiService.streamResponse(
+        prompt,
+        (streamedText) => {
+          setChatMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? { ...msg, status: 'streaming', content: streamedText }
+                : msg
+            )
+          );
         },
-      ]);
+        shouldFail
+      );
+
+      setChatMessages((prev) =>
+        prev.map((msg) => (msg.id === assistantMsgId ? assistantMessage : msg))
+      );
       return true;
-    } else {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown generation error';
+      setChatMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId
+            ? {
+                ...msg,
+                status: 'error',
+                content: '',
+                error: errorMsg,
+              }
+            : msg
+        )
+      );
       return false;
+    }
+  };
+
+  const handleRetryMessage = async (messageId: string) => {
+    // Retry failed message
+    setChatMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, status: 'pending', error: undefined } : m))
+    );
+
+    try {
+      const assistantMessage = await MockAiService.streamResponse(
+        'Retrying synthesis with heightened priority...',
+        (streamedText) => {
+          setChatMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === messageId
+                ? { ...msg, status: 'streaming', content: streamedText }
+                : msg
+            )
+          );
+        },
+        false
+      );
+
+      setChatMessages((prev) =>
+        prev.map((msg) => (msg.id === messageId ? assistantMessage : msg))
+      );
+    } catch {
+      setChatMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, status: 'error', error: 'Retry attempt failed.' } : msg
+        )
+      );
     }
   };
 
@@ -91,10 +175,10 @@ export const App: React.FC = () => {
             </div>
             <div>
               <span className="font-bold text-slate-100 text-sm sm:text-base tracking-tight">
-                Buttons with a Brain
+                Buttons with a Brain & AI Test Harness
               </span>
               <span className="hidden sm:inline-block ml-2 text-xs font-mono text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
-                FE-AA1 | Week 6
+                FE-AA1 / FE-09
               </span>
             </div>
           </div>
@@ -118,80 +202,54 @@ export const App: React.FC = () => {
         {/* Hero Section */}
         <section className="space-y-2">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            Motion & State Micro-interactions
+            Motion Choreography & Test Verification Suite
           </h1>
           <p className="text-slate-400 text-sm max-w-3xl leading-relaxed">
-            A production button that handles its full lifecycle (<span className="text-indigo-400 font-mono">idle</span> ➔ <span className="text-indigo-400 font-mono">hover</span> ➔ <span className="text-indigo-400 font-mono">active</span> ➔ <span className="text-indigo-400 font-mono">loading</span> ➔ <span className="text-emerald-400 font-mono">success</span> / <span className="text-rose-400 font-mono">error</span> ➔ <span className="text-indigo-400 font-mono">idle</span>) with intentional motion, compositor-friendly properties, and accessibility protections.
+            Full component lifecycle testing (FE-09) and state machine micro-interactions (FE-AA1). Tested across pending, streaming, tool-result, and error states with Vitest, React Testing Library, and Playwright.
           </p>
         </section>
 
-        {/* Live Contextual Chat Dispatch Showcase */}
+        {/* Live Contextual Chat Dispatch Showcase with Message Renderer */}
         <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-md space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
             <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-slate-400">
               <Bot className="w-4 h-4 text-indigo-400" />
-              <span>Interactive Capstone Demo: AI Chat Prompt Dispatch</span>
+              <span>Tested AI Route & Message Renderer (All Part Types)</span>
             </div>
             <div className="text-[11px] font-mono text-slate-500">
-              Random Failure Rate: {Math.round(simulationConfig.failureRate * 100)}%
+              Failure Rate: {Math.round(simulationConfig.failureRate * 100)}%
             </div>
           </div>
 
-          {/* Chat Transcript preview */}
-          <div className="bg-slate-950/80 border border-slate-800/60 rounded-xl p-4 min-h-[140px] max-h-[220px] overflow-y-auto space-y-3 font-sans text-xs">
-            {chatMessages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-2.5 leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'bg-indigo-600 text-white rounded-br-none'
-                      : 'bg-slate-900 border border-slate-800 text-slate-300 rounded-bl-none'
-                  }`}
-                >
-                  {msg.text}
-                </div>
-              </div>
+          {/* Render messages with ChatMessageRenderer */}
+          <div
+            role="region"
+            aria-label="Chat conversation log"
+            className="bg-slate-950/80 border border-slate-800/60 rounded-xl p-4 min-h-[160px] max-h-[320px] overflow-y-auto space-y-3 font-sans text-xs"
+          >
+            {chatMessages.map((msg) => (
+              <ChatMessageRenderer
+                key={msg.id}
+                message={msg}
+                onRetry={handleRetryMessage}
+              />
             ))}
           </div>
 
-          {/* Interactive Chat Input Bar with the BrainButton */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
-            <div className="relative flex-1 w-full">
-              <input
-                type="text"
-                value={chatPrompt}
-                onChange={(e) => setChatPrompt(e.target.value)}
-                placeholder="Enter prompt to dispatch..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const btn = document.getElementById('brain-send-btn');
-                    btn?.click();
-                  }
-                }}
-              />
-              <span className="hidden sm:inline-flex absolute right-3 top-3.5 items-center gap-1 text-[10px] font-mono text-slate-500 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
-                <CornerDownLeft className="w-2.5 h-2.5" /> Enter
-              </span>
-            </div>
-
-            <BrainButton
-              onStateChange={handleStateChange}
-              config={simulationConfig}
-              onDispatchAction={handleChatDispatch}
-            />
-          </div>
+          {/* Validated Form Component */}
+          <ValidatedPromptForm
+            onSubmit={handlePromptSubmit}
+            simulationConfig={simulationConfig}
+            onButtonStateChange={handleStateChange}
+          />
         </section>
 
-        {/* System Button Family Showcase (Proving the Motion Language is a System) */}
+        {/* System Button Family Showcase */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold text-slate-200 flex items-center gap-2">
               <Terminal className="w-4 h-4 text-indigo-400" />
-              <span>The Motion System Family (Optional Flex)</span>
+              <span>The Motion System Family (FE-AA1 Deliverable)</span>
             </h2>
             <span className="text-xs text-slate-500 font-mono">
               Shared timing curves, spring damping, & interruptibility
@@ -267,7 +325,7 @@ export const App: React.FC = () => {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500 font-mono">
-        Buttons with a Brain (FE-AA1) • Built with React, TypeScript, Framer Motion & Tailwind CSS • Compositor-only 60fps
+        FE-AA1 & FE-09 Test Pass • Built with React, TypeScript, Vitest, React Testing Library & Tailwind CSS
       </footer>
     </div>
   );

@@ -186,7 +186,7 @@ export const BrainButton: React.FC<BrainButtonProps> = ({
         )}
 
         {/* Content transition container */}
-        <AnimatePresence mode="wait" initial={false}>
+        <AnimatePresence mode="sync" initial={false}>
           {effectiveState === 'loading' && (
             <motion.div
               key="loading-state"
